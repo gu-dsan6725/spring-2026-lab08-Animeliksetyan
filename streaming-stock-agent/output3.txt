@@ -1,0 +1,64 @@
+Testing /ping endpoint...
+Status: 200
+Response: {'status': 'ok'}
+
+============================================================
+MULTI-TURN CONVERSATION TEST
+============================================================
+
+Session: test_session_123
+Query: What is the current price of Apple stock?
+------------------------------------------------------------
+
+[Tool calls starting...]
+
+[Calling tool: get_stock_price with args {'ticker': 'AAPL'}]
+[Tool calls completed]
+
+The current price of Apple Inc. (AAPL) is **$247.78**, as of the latest market data. This represents a **-1.18 (-0.47%)** decline from its previous close of **$248.96**. The market is currently in "REGULAR" trading state.
+
+Prices are delayed from Yahoo Finance data. Let me know if you'd like additional details!
+[Done]
+
+============================================================
+
+Session: test_session_123
+Query: How has it changed in the last 30 days?
+------------------------------------------------------------
+
+[Tool calls starting...]
+
+[Calling tool: get_stock_history with args {'days': 30, 'ticker': 'AAPL'}]
+[Tool calls completed]
+
+Based on historical data from the last 30 days (Feb 18, 2026 - Mar 20, 2026):
+
+**Apple (AAPL) Price Movement**
+- **Starting Price**: $264.35 (Feb 18)
+- **Highest Price**: $276.11 
+- **Lowest Price**: $247.30 
+- **Current Price**: $247.78 (as of latest update)
+
+The stock has traded between **$247.30 and $276.11** during this period, with an average daily trading volume of **37.6 million shares**. The price has declined from its 30-day starting level but remains above its lowest point in this period.
+
+*Data has a 15-minute delay from Yahoo Finance. Let me know if you'd like to see visual trends!*
+[Done]
+
+============================================================
+
+Session: test_session_123
+Query: What about Tesla?
+------------------------------------------------------------
+
+[Tool calls starting...]
+
+[Calling tool: get_stock_price with args {'ticker': 'TSLA'}]
+[Tool calls completed]
+
+The current price of Tesla, Inc. (TSLA) is **$372.99**, with a decline of **- $7.31 (-1.92%)** from its previous close of $380.30. The market is in "REGULAR" trading state. 
+
+Prices are delayed by 15 minutes from Yahoo Finance data. Would you like to compare Tesla with Apple’s performance or see Tesla’s 30-day historical data?
+[Done]
+
+============================================================
+

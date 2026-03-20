@@ -177,7 +177,69 @@ def _get_company_info(
             "error": str(e),
             "ticker": ticker.upper()
         }
+    
+def _compare_stocks(
+    symbol1: str,
+    symbol2: str
+) -> Dict[str, Any]:
+    """Compare two stocks side-by-side.
 
+    Args:
+        symbol1: First stock symbol (e.g., 'AAPL')
+        symbol2: Second stock symbol (e.g., 'MSFT')
+
+    Returns:
+        Dictionary with comparison data for both stocks
+    """
+    try:
+        stock1_data = _get_stock_price(symbol1)
+        stock2_data = _get_stock_price(symbol2)
+
+        if "error" in stock1_data:
+            return {"error": f"Could not fetch data for {symbol1}: {stock1_data['error']}"}
+        if "error" in stock2_data:
+            return {"error": f"Could not fetch data for {symbol2}: {stock2_data['error']}"}
+
+        stock1_info = yf.Ticker(symbol1.upper()).info
+        stock2_info = yf.Ticker(symbol2.upper()).info
+
+        def _format_market_cap(cap) -> str:
+            if cap is None:
+                return "N/A"
+            if cap >= 1e12:
+                return f"{cap / 1e12:.1f}T"
+            if cap >= 1e9:
+                return f"{cap / 1e9:.1f}B"
+            if cap >= 1e6:
+                return f"{cap / 1e6:.1f}M"
+            return str(cap)
+
+        return {
+            "comparison": {
+                "symbol1": symbol1.upper(),
+                "symbol2": symbol2.upper(),
+                "stock1": {
+                    "symbol": stock1_data["ticker"],
+                    "current_price": stock1_data["current_price"],
+                    "company_name": stock1_data["name"],
+                    "market_cap": _format_market_cap(stock1_info.get("marketCap")),
+                    "change": stock1_data.get("change"),
+                    "change_percent": stock1_data.get("change_percent"),
+                },
+                "stock2": {
+                    "symbol": stock2_data["ticker"],
+                    "current_price": stock2_data["current_price"],
+                    "company_name": stock2_data["name"],
+                    "market_cap": _format_market_cap(stock2_info.get("marketCap")),
+                    "change": stock2_data.get("change"),
+                    "change_percent": stock2_data.get("change_percent"),
+                },
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Error comparing {symbol1} and {symbol2}: {e}")
+        return {"error": str(e)}
 
 # Tool definitions for Strands agent
 STOCK_TOOLS = [
@@ -230,9 +292,27 @@ STOCK_TOOLS = [
             "required": ["ticker"]
         },
         "function": _get_company_info
+    },
+    {
+        "name": "compare_stocks",
+        "description": "Compare two stocks side-by-side with price, market cap, and daily change. Use this when the user asks to compare two stocks, or asks which stock is better.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "symbol1": {
+                    "type": "string",
+                    "description": "First stock symbol to compare (e.g., AAPL)"
+                },
+                "symbol2": {
+                    "type": "string",
+                    "description": "Second stock symbol to compare (e.g., MSFT)"
+                }
+            },
+            "required": ["symbol1", "symbol2"]
+        },
+        "function": _compare_stocks
     }
 ]
-
 
 def get_system_prompt() -> str:
     """Get the system prompt for the stock agent."""
