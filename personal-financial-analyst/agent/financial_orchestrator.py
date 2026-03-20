@@ -12,7 +12,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, AgentDefinition
+from claude_agent_sdk import (ClaudeSDKClient, ClaudeAgentOptions, AgentDefinition, AssistantMessage, ResultMessage, TextBlock, PermissionResultAllow, ToolPermissionContext,)
 
 
 logging.basicConfig(
@@ -44,13 +44,26 @@ def _save_json(
         json.dump(data, f, indent=2)
     logger.info(f"Saved data to {filepath}")
 
+def _load_prompt(filename):
+    """Load a prompt template from the prompts directory."""
+    prompt_path = Path(__file__).parent/"prompts"/filename
+    return prompt_path.read_text()
+async def _auto_approve_all(
+    tool_name: str,
+    input_data: dict,
+    context: ToolPermissionContext
+) -> PermissionResultAllow:
+    """Auto-approve all tools without prompting."""
+    logger.debug(f"Auto-approving tool: {tool_name}")
+    return PermissionResultAllow()
 
 def _detect_subscriptions(
     bank_transactions: list[dict],
     credit_card_transactions: list[dict]
 ) -> list[dict]:
-    """Detect subscription services from recurring transactions.
-
+    """Detect subscription services from recurring transactions."""
+   
+    """
     TODO: Implement logic to:
     1. Filter transactions marked as recurring
     2. Identify subscription patterns (monthly charges)
@@ -68,7 +81,25 @@ def _detect_subscriptions(
 
     # TODO: Implement subscription detection logic
     # Hint: Look for transactions with recurring=True
+    for t in bank_transactions:
+        if t.get("recurring") and t.get("amount", 0) <0:
+            subscriptions.append({
+                "name": t["description"],
+                "amount": abs(t["amount"]),
+                "frequency": "monthly",
+                "source": "bank",
+                "category": t.get("category", "Unknown")
+            })
     # Hint: Subscriptions are typically negative amounts (outflows)
+    for t in credit_card_transactions:
+        if t.get("recurring") and t.get("amount", 0 )<0:
+            subscriptions.append({
+                "name": t["merchant"],
+                "amount": abs(t["amount"]),
+                "frequency": "monthly",
+                "source": "credit_card",
+                "category": t.get("category", "Unknown")
+            })
 
     return subscriptions
 
@@ -181,10 +212,31 @@ async def _run_orchestrator(
     #     model="haiku"  # Fast and cheap for research
     # )
 
+    research_agent = AgentDefinition(
+        description="Research cheaper alternatives for subscriptions and services",
+        prompt = _load_prompt("research_agent_prompt.txt"),
+        tools = ["write"],
+        model="haiku"
+    )
+
+    negotiation_agent = AgentDefinition(
+        description = "create negotiation strategies and scripts for bills and services",
+        prompt = _load_prompt("negotiation_agent_prompt.txt"),
+        tools = ["write"],
+        model = "haiku"
+    )
+
+    tax_agent = AgentDefinition(
+        description = "Identify tax-deductible expenses and optimization opportunities",
+        prompt = _load_prompt("tax_agent_prompt.txt"),
+        tools = ["write"],
+        model = "haiku"
+    )
+
     agents = {
-        # "research_agent": research_agent,
-        # "negotiation_agent": negotiation_agent,
-        # "tax_agent": tax_agent,
+        "research_agent": research_agent,
+        "negotiation_agent": negotiation_agent,
+        "tax_agent": tax_agent
     }
 
     # Step 4: Configure orchestrator agent with sub-agents
@@ -198,6 +250,36 @@ async def _run_orchestrator(
     #     agents=agents,
     #     # Add MCP server configurations here
     # )
+
+    working_dir = Path(__file__).parent.parent
+    mcp_servers = {
+        "Bank Account Server": {
+            "type": "http",
+            "url": "http://127.0.0.1:5001/mcp"
+        },
+        "Credit Card Server": {
+            "type": "http",
+            "url": "http://127.0.0.1:5002/mcp"
+        }
+    }
+
+    system_prompt = _load_prompt("orchestrator_system_prompt.txt")
+
+    user_prompt = _load_prompt("orchestrator_user_prompt.txt").format(
+        user_query=user_query,
+        username=username,
+        start_date=start_date,
+        end_date=end_date
+    )
+
+    options = ClaudeAgentOptions(
+        model="sonnet",
+        system_prompt=system_prompt,
+        mcp_servers=mcp_servers,
+        agents=agents,
+        can_use_tool=_auto_approve_all,
+        cwd=str(working_dir)
+    )
 
     # Step 5: Run orchestrator with Claude Agent SDK
     # TODO: Use ClaudeSDKClient to run the orchestration
@@ -221,7 +303,27 @@ async def _run_orchestrator(
     #     async for message in client.stream(prompt):
     #         if message.type == "assistant":
     #             print(message.content)
+# Step 5: Run orchestrator
+    try:
+        async with ClaudeSDKClient(options=options) as client:
+            await client.query(user_prompt)
 
+            async for message in client.receive_response():
+                if isinstance(message, AssistantMessage):
+                    for block in message.content:
+                        if isinstance(block, TextBlock):
+                            print(block.text, end='', flush=True)
+                elif isinstance(message, ResultMessage):
+                    logger.info(f"\nDuration: {message.duration_ms}ms")
+                    logger.info(f"Cost: ${message.total_cost_usd:.4f}")
+                    break
+
+    except Exception as e:
+        logger.error(f"Error during orchestration: {e}", exc_info=True)
+        logger.error("Troubleshooting:")
+        logger.error("1. Make sure MCP servers are running on ports 5001 and 5002")
+        logger.error("2. Check that ANTHROPIC_API_KEY is set")
+        raise
     # Step 6: Generate final report
     logger.info("Orchestration complete. Check data/final_report.txt for results.")
 
